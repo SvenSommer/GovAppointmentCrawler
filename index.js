@@ -1,4 +1,8 @@
 // =================================================
+// * imports
+// =================================================
+const { now } = require('./utils');
+// =================================================
 // * Crawler configuration
 // =================================================
 const URL = "https://egov.potsdam.de/tnv/?START_OFFICE=buergerservice"
@@ -13,19 +17,21 @@ const secondSelectOptSelector = "#id_1337591238"
 const secondSubmitButtonSelector = "#action_concernselect_next"
 const cellsSelector = "table .ekolCalendarFreeTimeContainer"
 const lastSubmitButtonSelector = "#action_calendarselect_previous"
+const retrySubmitSelector = "#action_concerncomments_next"
 
-const termsToAvoid = new RegExp(/0 frei|geschlossen/gi)
+const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
 
-;(async () => {
+(async () => {
     const { chromium } = require('playwright');
     const viewport = {
         width: 1920,
         height: 1080
     }
     const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'
+    // Start maximized: https://github.com/microsoft/playwright/issues/4046
     const pageConfig = {
         userAgent: userAgent,
-        viewport: viewport,
+        viewport: null,
         acceptDownloads: true
     }
 
@@ -72,30 +78,39 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi)
     await page.waitForTimeout(ONE_SECOND)
     await page.selectOption(secondSelectOptSelector, "1")
     console.log(`* Sending the filters...`)
+    await page.waitForTimeout(ONE_SECOND)
     await page.click(secondSubmitButtonSelector)
     await page.waitForTimeout(ONE_SECOND)
+    await page.click(retrySubmitSelector)
+    await page.waitForTimeout(ONE_SECOND * 2.5)
+
 
     //* Checking if there are free dates
     let stop = false
-    while(!stop){
+    while (!stop) {
+        console.log(`* Current sesion url: ${page.url()} - ${now()}`)
         try {
-            const cells = await page.$$(cellsSelector)
-            const cellsText = await Promise.all(cells.map(cell => cell.innerText.trim()))
-            const freeDates = cellsText.filter(cellText => !termsToAvoid.match(cellText))
+            const cellsText = await page.evaluate((cellsSelector) => {
+                const cells = document.querySelectorAll(cellsSelector)
+                return Array.from(cells).map(cell => cell.innerText.trim())
+            }, cellsSelector)
+            const freeDates = cellsText.filter(cellText => !cellText.match(termsToAvoid))
             if (freeDates.length > 0) {
                 console.log(`* Found ${freeDates.length} free dates`)
+                console.log(freeDates)
                 stop = true
             } else {
                 console.log(`* No free dates found, clicking the last submit button`)
                 await page.click(lastSubmitButtonSelector)
                 await page.waitForTimeout(ONE_SECOND)
-                await page.click(secondSubmitButtonSelector)
+                await page.click(retrySubmitSelector)
                 await page.waitForTimeout(ONE_SECOND)
             }
         } catch (error) {
             console.log(error)
             await handleClose(`!! Error while checking for free dates`)
         }
+        console.log()
     }
-
+    await handleClose(`* Closing the browser`)
 })()
