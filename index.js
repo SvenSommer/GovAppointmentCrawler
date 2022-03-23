@@ -1,7 +1,8 @@
 // =================================================
 // * imports
 // =================================================
-const { now } = require('./utils');
+const { now,normalize } = require('./utils');
+const fs = require('fs');
 // =================================================
 // * Crawler configuration
 // =================================================
@@ -18,6 +19,8 @@ const secondSubmitButtonSelector = "#action_concernselect_next"
 const cellsSelector = "table .ekolCalendarFreeTimeContainer"
 const lastSubmitButtonSelector = "#action_calendarselect_previous"
 const retrySubmitSelector = "#action_concerncomments_next"
+const availableTimesSelector = "#ekolcalendarpopopwithtimes select"
+const acceptTimeSelector = "#ekolcalendarpopupdayauswahlbuttoncontainer button"
 
 const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
 
@@ -40,7 +43,8 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
     const browser = await chromium.launch({ headless: headless, args: ["--start-maximized"] });
     const context = await browser.newContext(pageConfig);
     const page = await context.newPage();
-
+    page.setDefaultNavigationTimeout(ONE_SECOND * 60 * 5);//5 minutes
+    page.setDefaultNavigationTimeout(ONE_SECOND * 60 * 5);//5 minutes
     //* Handling all the errors
     const handleClose = async (message = "Closing the browser on unexpected Error") => {
         console.log(message);
@@ -87,6 +91,7 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
 
     //* Checking if there are free dates
     let stop = false
+    let freeDates = []
     while (!stop) {
         console.log(`* Current sesion url: ${page.url()} - ${now()}`)
         try {
@@ -94,11 +99,13 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
                 const cells = document.querySelectorAll(cellsSelector)
                 return Array.from(cells).map(cell => cell.innerText.trim())
             }, cellsSelector)
-            const freeDates = cellsText.filter(cellText => !cellText.match(termsToAvoid))
+            freeDates = cellsText.filter(cellText => !cellText.match(termsToAvoid))
             if (freeDates.length > 0) {
                 console.log(`* Found ${freeDates.length} free dates`)
                 console.log(freeDates)
                 stop = true
+                console.log(`* Saving the content of the page`)
+                fs.writeFileSync(`./content_${normalize(now())}.html`, await page.content())
             } else {
                 console.log(`* No free dates found, clicking the last submit button`)
                 await page.click(lastSubmitButtonSelector)
@@ -112,5 +119,24 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
         }
         console.log()
     }
+    console.log(`* Cliking on the first free date`)
+    let freeDate = freeDates[0]
+    await page.locator(`text=${freeDate}`).click()
+    await page.waitForTimeout(ONE_SECOND * 2)
+    fs.writeFileSync(`freeDate_${normalize(now())}.html`, await page.content())
+    //* Getting the first available time
+    const firstAvailableTime = await page.evaluate((selector) => {
+        const select = document.querySelector(selector)
+        return {
+            value: select.options[1].value,
+            time: select.options[1].innerText.trim()
+        }
+    }, availableTimesSelector)
+    console.log(`* Selecting the appointment at ${firstAvailableTime.time}`)
+    await page.selectOption(availableTimesSelector, firstAvailableTime.value.toString())
+    await page.click(acceptTimeSelector)
+    await page.waitForTimeout(ONE_SECOND * 2)
+    fs.writeFileSync(`selectedTime_${normalize(now())}.html`, await page.content())
+    //* done, continue with the other images from the convo and keep doing step by step
     await handleClose(`* Closing the browser`)
 })()
