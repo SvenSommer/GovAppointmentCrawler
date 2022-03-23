@@ -1,14 +1,21 @@
 // =================================================
 // * imports
 // =================================================
-const { now,normalize } = require('./utils');
+const { now, normalize, sendEmail } = require('./utils');
 const fs = require('fs');
+const config = require("./config.json")
 // =================================================
 // * Crawler configuration
 // =================================================
 const URL = "https://egov.potsdam.de/tnv/?START_OFFICE=buergerservice"
 const ONE_SECOND = 1000
 
+const mailOptions = {
+    from: config.userEmail,
+    to: config.targetEmail,
+    subject: "",
+    html: "Empty"
+}
 // =================================================
 // * Selectors
 // =================================================
@@ -124,6 +131,27 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
     await page.locator(`text=${freeDate}`).click()
     await page.waitForTimeout(ONE_SECOND * 2)
     fs.writeFileSync(`freeDate_${normalize(now())}.html`, await page.content())
+    //* Making the screenshot for the email
+    const screenshotName = "screenshot.png"
+    await page.screenshot({ path: `./${screenshotName}` })
+    const emailBody = {
+        url: page.url(),
+        freeDate: freeDate,
+    }
+    //* Sending the email
+    const mailOptions = {
+        from: config.userEmail,
+        to: config.targetEmail,
+        subject: `** Free date found on ${now()} **`,
+        html: `<pre>${JSON.stringify(emailBody, null, 2)}</pre>`,
+        attachments: [
+            {
+                filename: screenshotName,
+                path: `./${screenshotName}`,
+            }
+        ]
+    };
+    await sendEmail(mailOptions)
     //* Getting the first available time
     const firstAvailableTime = await page.evaluate((selector) => {
         const select = document.querySelector(selector)
