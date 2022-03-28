@@ -9,13 +9,8 @@ const config = require("./config.json")
 // =================================================
 const URL = "https://egov.potsdam.de/tnv/?START_OFFICE=buergerservice"
 const ONE_SECOND = 1000
+const FIVE_MINUTES = ONE_SECOND * 60 * 5
 
-const mailOptions = {
-    from: config.userEmail,
-    to: config.targetEmail,
-    subject: "",
-    html: "Empty"
-}
 // =================================================
 // * Selectors
 // =================================================
@@ -28,6 +23,8 @@ const lastSubmitButtonSelector = "#action_calendarselect_previous"
 const retrySubmitSelector = "#action_concerncomments_next"
 const availableTimesSelector = "#ekolcalendarpopopwithtimes select"
 const acceptTimeSelector = "#ekolcalendarpopupdayauswahlbuttoncontainer button"
+const vorNameSelector = "#vorname"
+const nachNameSelector = "#nachname"
 
 const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
 
@@ -50,8 +47,8 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
     const browser = await chromium.launch({ headless: headless, args: ["--start-maximized"] });
     const context = await browser.newContext(pageConfig);
     const page = await context.newPage();
-    page.setDefaultNavigationTimeout(ONE_SECOND * 60 * 5);//5 minutes
-    page.setDefaultNavigationTimeout(ONE_SECOND * 60 * 5);//5 minutes
+    page.setDefaultNavigationTimeout(FIVE_MINUTES);//5 minutes
+    page.setDefaultNavigationTimeout(FIVE_MINUTES);//5 minutes
     //* Handling all the errors
     const handleClose = async (message = "Closing the browser on unexpected Error") => {
         console.log(message);
@@ -115,9 +112,9 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
                 fs.writeFileSync(`./content_${normalize(now())}.html`, await page.content())
             } else {
                 console.log(`* No free dates found, clicking the last submit button`)
-                await page.click(lastSubmitButtonSelector)
+                await page.click(lastSubmitButtonSelector, { timeout: FIVE_MINUTES })
                 await page.waitForTimeout(ONE_SECOND)
-                await page.click(retrySubmitSelector)
+                await page.click(retrySubmitSelector, { timeout: FIVE_MINUTES })
                 await page.waitForTimeout(ONE_SECOND)
             }
         } catch (error) {
@@ -128,7 +125,7 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
     }
     console.log(`* Cliking on the first free date`)
     let freeDate = freeDates[0]
-    await page.locator(`text=${freeDate}`).click()
+    await page.locator(`text=${freeDate}`).click({ timeout: FIVE_MINUTES })
     await page.waitForTimeout(ONE_SECOND * 2)
     fs.writeFileSync(`freeDate_${normalize(now())}.html`, await page.content())
     //* Making the screenshot for the email
@@ -162,7 +159,7 @@ const termsToAvoid = new RegExp(/0 frei|geschlossen/gi);
     }, availableTimesSelector)
     console.log(`* Selecting the appointment at ${firstAvailableTime.time}`)
     await page.selectOption(availableTimesSelector, firstAvailableTime.value.toString())
-    await page.click(acceptTimeSelector)
+    await page.click(acceptTimeSelector, { timeout: FIVE_MINUTES })
     await page.waitForTimeout(ONE_SECOND * 2)
     fs.writeFileSync(`selectedTime_${normalize(now())}.html`, await page.content())
     //* done, continue with the other images from the convo and keep doing step by step
